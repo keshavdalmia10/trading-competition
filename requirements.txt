@@ -1,0 +1,17 @@
+openai>=1.12.0
+pydantic>=2.5.0
+yfinance>=0.2.36
+fredapi>=0.5.1
+finnhub-python>=2.4.19
+newsapi-python>=0.2.7
+pandas-ta>=0.3.14b1
+vaderSentiment>=3.3.2
+openpyxl>=3.1.2
+pandas>=2.1.0
+numpy>=1.24.0
+python-dotenv>=1.0.0
+httpx>=0.26.0
+tenacity>=8.2.3
+loguru>=0.7.2
+arch>=6.0
+scipy>=1.11.0

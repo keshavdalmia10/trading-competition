@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+.claude/
+data/cache/*.json
+output/reports/*.xlsx
+output/reports/*.json
+.venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+output/reports/*.log
