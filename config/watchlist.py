@@ -1,35 +1,71 @@
-"""Initial ticker universe for the trading competition."""
+"""Ticker universe for Round 2: War Pairs strategy (Mar 2 - Apr 3, 2026)."""
 
-# Evolution: established companies innovating incrementally
-# Evolution: established blue-chip and mega-cap growth leaders
-EVOLUTION_TICKERS = [
-    "AAPL", "MSFT", "GOOGL", "AMZN", "META",
-    "NVDA", "JPM", "WMT", "CRM", "ADBE",
-    "NFLX", "V", "UNH", "JNJ", "COST",
+# War Longs: defense, energy — benefit from US-Iran conflict
+WAR_LONG_TICKERS = [
+    "LMT",   # Lockheed Martin — top defense contractor
+    "NOC",   # Northrop Grumman — missiles & drones
+    "RTX",   # RTX Corp — Patriot missile systems
+    "GD",    # General Dynamics — naval/Gulf escort ops
+    "XOM",   # ExxonMobil — oil surge, ATH
+    "CVX",   # Chevron — oil thesis, strong balance sheet
+    "OXY",   # Occidental — high beta oil play
+    "LNG",   # Cheniere Energy — LNG exports surging
 ]
 
-# Revolution: disruptive companies changing entire industries
-REVOLUTION_TICKERS = [
-    "TSLA", "PLTR", "COIN", "RKLB", "IONQ",
-    "ARM", "CRSP", "HOOD", "XYZ", "NET",
-    "SNOW", "AFRM", "SMCI", "DDOG", "AI",
+# War Shorts: airlines, travel, consumer — hurt by war
+WAR_SHORT_TICKERS = [
+    "AAL",   # American Airlines — worst balance sheet, fuel costs
+    "DAL",   # Delta — international route exposure
+    "UAL",   # United — fuel hedge inadequate
+    "CCL",   # Carnival — cruise devastated by fuel + Gulf closures
+    "ABNB",  # Airbnb — travel demand destruction
+    "DIS",   # Disney — parks spending squeeze
+    "NKE",   # Nike — consumer discretionary + tariff hit
 ]
 
-# High momentum plays: stocks with strong relative strength and trend
-MOMENTUM_TICKERS = [
-    "AVGO", "AMD", "MRVL", "PANW", "NOW",
-    "UBER", "LLY", "NVO", "APP", "MSTR",
+# Flexible Longs: AI, cybersecurity, financials — war-agnostic momentum
+FLEXIBLE_LONG_TICKERS = [
+    "CRWD",  # CrowdStrike — cybersecurity + AI + war demand
+    "PANW",  # Palo Alto — cyber demand surge
+    "PLTR",  # Palantir — AI + gov/defense contracts
+    "AVGO",  # Broadcom — AI infrastructure momentum
+    "DELL",  # Dell — AI infrastructure, 30% earnings surge
+    "GS",    # Goldman Sachs — higher rates, trading revenue
+    "JPM",   # JPMorgan — same thesis as GS
+    "AXON",  # Axon — defense/law enforcement tech
 ]
 
-# Pre-classified evolution/revolution mapping
-TICKER_CLASSIFICATION: dict[str, str] = {}
-for t in EVOLUTION_TICKERS:
-    TICKER_CLASSIFICATION[t] = "evolution"
-for t in REVOLUTION_TICKERS:
-    TICKER_CLASSIFICATION[t] = "revolution"
-for t in MOMENTUM_TICKERS:
-    # Momentum tickers default to evolution unless overridden
-    TICKER_CLASSIFICATION.setdefault(t, "evolution")
+# Flexible Shorts: unprofitable, tariff-exposed, weak sectors
+FLEXIBLE_SHORT_TICKERS = [
+    "RIVN",  # Rivian — no profits, EV demand destruction
+    "LCID",  # Lucid — cash burn, demand destruction
+    "SNAP",  # Snap — ad revenue collapse
+    "COIN",  # Coinbase — crypto Fear Index at 14
+    "HOOD",  # Robinhood — crypto + retail trading slowdown
+]
 
-# Full curated watchlist (deduplicated)
-ALL_TICKERS = sorted(set(EVOLUTION_TICKERS + REVOLUTION_TICKERS + MOMENTUM_TICKERS))
+# Sleeve classification mapping
+TICKER_SLEEVE: dict[str, str] = {}
+for t in WAR_LONG_TICKERS:
+    TICKER_SLEEVE[t] = "war_long"
+for t in WAR_SHORT_TICKERS:
+    TICKER_SLEEVE[t] = "war_short"
+for t in FLEXIBLE_LONG_TICKERS:
+    TICKER_SLEEVE[t] = "flexible"
+for t in FLEXIBLE_SHORT_TICKERS:
+    TICKER_SLEEVE[t] = "flexible"
+
+# Direction mapping
+TICKER_DIRECTION: dict[str, str] = {}
+for t in WAR_LONG_TICKERS + FLEXIBLE_LONG_TICKERS:
+    TICKER_DIRECTION[t] = "long"
+for t in WAR_SHORT_TICKERS + FLEXIBLE_SHORT_TICKERS:
+    TICKER_DIRECTION[t] = "short"
+
+# Backward-compatible classification (all are "evolution" for simplicity)
+TICKER_CLASSIFICATION: dict[str, str] = {t: "evolution" for t in TICKER_SLEEVE}
+
+# Full ticker universe
+ALL_LONG_TICKERS = sorted(set(WAR_LONG_TICKERS + FLEXIBLE_LONG_TICKERS))
+ALL_SHORT_TICKERS = sorted(set(WAR_SHORT_TICKERS + FLEXIBLE_SHORT_TICKERS))
+ALL_TICKERS = sorted(set(ALL_LONG_TICKERS + ALL_SHORT_TICKERS))
