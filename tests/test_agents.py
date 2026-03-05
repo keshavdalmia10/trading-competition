@@ -9,6 +9,11 @@ from data.models import (
     FundamentalScreenerOutput,
     FundamentalData,
     StockType,
+    PositionDirection,
+    PortfolioSleeve,
+    PortfolioStock,
+    PortfolioManagerOutput,
+    ScoringRow,
 )
 from orchestrator.message_bus import MessageBus
 
@@ -54,7 +59,7 @@ class TestBaseAgent(unittest.TestCase):
 
         class DummyAgent(BaseAgent):
             name = "dummy"
-            provider = "deepseek"
+            provider = "claude"
             async def gather_data(self):
                 return {}
             async def analyze(self, data):
@@ -86,7 +91,7 @@ class TestBaseAgent(unittest.TestCase):
 
         class DummyAgent(BaseAgent):
             name = "dummy"
-            provider = "deepseek"
+            provider = "claude"
             async def gather_data(self):
                 return {}
             async def analyze(self, data):
@@ -139,6 +144,66 @@ class TestModels(unittest.TestCase):
                 fundamental_score=150.0,  # Over 100, should fail
                 rationale="X",
             )
+
+
+class TestRound2Models(unittest.TestCase):
+    """Tests for Round 2 long/short model additions."""
+
+    def test_position_direction_enum(self):
+        self.assertEqual(PositionDirection.LONG.value, "long")
+        self.assertEqual(PositionDirection.SHORT.value, "short")
+
+    def test_portfolio_sleeve_enum(self):
+        self.assertEqual(PortfolioSleeve.WAR_LONG.value, "war_long")
+        self.assertEqual(PortfolioSleeve.WAR_SHORT.value, "war_short")
+        self.assertEqual(PortfolioSleeve.FLEXIBLE.value, "flexible")
+
+    def test_portfolio_stock_has_direction_and_sleeve(self):
+        stock = PortfolioStock(
+            ticker="LMT", name="Lockheed Martin", sector="Industrials",
+            stock_type=StockType.EVOLUTION, direction=PositionDirection.LONG,
+            sleeve=PortfolioSleeve.WAR_LONG, stop_loss_pct=15.0,
+            weight_pct=8.0, composite_score=80.0, fundamental_score=70.0,
+            technical_score=75.0, catalyst_score=85.0, sentiment_score=80.0,
+            risk_score=65.0, entry_strategy="Buy at open",
+            exit_strategy="Hold unless -15% stop hit", thesis="Defense war play",
+        )
+        self.assertEqual(stock.direction, PositionDirection.LONG)
+        self.assertEqual(stock.sleeve, PortfolioSleeve.WAR_LONG)
+        self.assertEqual(stock.stop_loss_pct, 15.0)
+
+    def test_portfolio_stock_short(self):
+        stock = PortfolioStock(
+            ticker="AAL", name="American Airlines", sector="Industrials",
+            stock_type=StockType.EVOLUTION, direction=PositionDirection.SHORT,
+            sleeve=PortfolioSleeve.WAR_SHORT, stop_loss_pct=25.0,
+            weight_pct=8.0, composite_score=75.0, fundamental_score=40.0,
+            technical_score=30.0, catalyst_score=80.0, sentiment_score=25.0,
+            risk_score=60.0, entry_strategy="Short at open",
+            exit_strategy="Cover if rises 25%", thesis="Airlines crushed",
+        )
+        self.assertEqual(stock.direction, PositionDirection.SHORT)
+
+    def test_portfolio_manager_output_has_long_short_fields(self):
+        output = PortfolioManagerOutput(
+            stocks=[], portfolio_rationale="Test",
+            long_count=8, short_count=8,
+            long_exposure_pct=53.0, short_exposure_pct=47.0,
+            sector_breakdown={"Industrials": 3},
+            expected_portfolio_beta=0.2,
+            key_risks=["war ends"], key_catalysts=["oil spike"],
+        )
+        self.assertEqual(output.long_count, 8)
+        self.assertEqual(output.short_count, 8)
+
+    def test_scoring_row_has_direction(self):
+        row = ScoringRow(
+            ticker="LMT", name="Lockheed Martin", sector="Industrials",
+            stock_type=StockType.EVOLUTION, direction=PositionDirection.LONG,
+            fundamental_score=70.0, technical_score=75.0, catalyst_score=85.0,
+            sentiment_score=80.0, risk_score=65.0, composite_score=75.0,
+        )
+        self.assertEqual(row.direction, PositionDirection.LONG)
 
 
 if __name__ == "__main__":

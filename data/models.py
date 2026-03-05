@@ -35,6 +35,17 @@ class CatalystDirection(str, Enum):
     UNCERTAIN = "uncertain"
 
 
+class PositionDirection(str, Enum):
+    LONG = "long"
+    SHORT = "short"
+
+
+class PortfolioSleeve(str, Enum):
+    WAR_LONG = "war_long"
+    WAR_SHORT = "war_short"
+    FLEXIBLE = "flexible"
+
+
 # ── Macro Analyst Output ──────────────────────────────────────────────────
 
 class MacroIndicator(BaseModel):
@@ -84,7 +95,7 @@ class FundamentalScreenerOutput(BaseModel):
 
 class TechnicalData(BaseModel):
     ticker: str
-    current_price: float
+    current_price: Optional[float] = None
     rsi_14: Optional[float] = None
     macd_signal: Optional[str] = None  # "bullish", "bearish", "neutral"
     sma_20: Optional[float] = None
@@ -187,6 +198,9 @@ class PortfolioStock(BaseModel):
     name: str
     sector: str
     stock_type: StockType
+    direction: PositionDirection = PositionDirection.LONG
+    sleeve: PortfolioSleeve = PortfolioSleeve.FLEXIBLE
+    stop_loss_pct: float = Field(default=15.0, ge=0, le=100)
     weight_pct: float = Field(ge=0, le=100)
     composite_score: float = Field(ge=0, le=100)
     fundamental_score: float = Field(ge=0, le=100)
@@ -206,8 +220,10 @@ class PortfolioStock(BaseModel):
 class PortfolioManagerOutput(BaseModel):
     stocks: list[PortfolioStock]
     portfolio_rationale: str
-    evolution_count: int
-    revolution_count: int
+    long_count: int
+    short_count: int
+    long_exposure_pct: float = Field(ge=0, le=100)
+    short_exposure_pct: float = Field(ge=0, le=100)
     sector_breakdown: dict[str, int]
     expected_portfolio_beta: Optional[float] = None
     key_risks: list[str]
@@ -221,6 +237,7 @@ class ScoringRow(BaseModel):
     name: str
     sector: str
     stock_type: StockType
+    direction: PositionDirection = PositionDirection.LONG
     fundamental_score: float
     technical_score: float
     catalyst_score: float
