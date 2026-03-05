@@ -17,7 +17,7 @@ from tools.technical_indicators import compute_indicators
 class TechnicalAnalyst(BaseAgent):
     name = "technical_analyst"
     description = "Technical analyst evaluating momentum and price patterns"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Gathering technical data...")
@@ -46,49 +46,63 @@ class TechnicalAnalyst(BaseAgent):
         return {"tickers_data": tickers_data}
 
     async def analyze(self, data: dict[str, Any]) -> TechnicalAnalystOutput:
-        prompt = f"""You are a technical analyst evaluating stocks for a 3-WEEK trading competition
-(Feb 9 - Mar 2, 2026). Focus on SHORT-TERM momentum and setups.
+        prompt = f"""You are a technical analyst evaluating stocks for a LONG/SHORT competition
+(Mar 2 - Apr 3, 2026). Analyze BOTH bullish setups (for longs) AND bearish setups (for shorts).
+
+CRITICAL CONTEXT:
+- US-Iran war driving sector divergence. Defense/energy trending UP, airlines trending DOWN.
+- Look for bullish patterns on long candidates, bearish patterns on short candidates.
+- For SHORT candidates: high RSI (overbought bounces failing), bearish MACD, below key SMAs,
+  increasing volume on down days = GOOD short setup = HIGH technical score.
 
 TECHNICAL DATA for each stock:
 {json.dumps(data['tickers_data'], indent=1, default=str)}
 
-ALGORITHMIC PRE-SCORE: Each stock has a "momentum_score_algo" computed deterministically from
-RSI zone, MACD crossover, SMA alignment, volume trend, and Bollinger position.
-USE THIS AS YOUR STARTING POINT for technical_score. You may adjust by +/-15 points with
-clear justification. If you deviate more, explain why the formula is misleading for this stock.
+ALGORITHMIC PRE-SCORE: "momentum_score_algo" computed from RSI, MACD, SMA, volume, Bollinger.
+For LONG candidates: use as starting point for technical_score.
+For SHORT candidates: INVERT it (100 - momentum_score_algo) as starting point.
+A stock with terrible momentum = great short = high technical_score for a short.
+Adjust by +/-15 points with justification.
 
-Scoring factors:
-- RSI: 40-65 is ideal (momentum without being overbought). >70 risky, <30 oversold bounce potential
-- MACD: bullish crossover = strong positive signal
-- Price above SMA 20 and 50 = bullish short-term trend
-- Volume increasing = confirms trend
-- Bollinger position: middle/upper band = healthy uptrend
-- Support/resistance: closer to support = better risk/reward
+FOR LONGS: RSI 40-65 ideal, bullish MACD, above SMA 20/50, increasing volume.
+FOR SHORTS: RSI >70 or continued weakness below 30, bearish MACD, below SMA 20/50.
 
 Respond with JSON:
 {{
     "analyses": [
         {{
-            "ticker": "AAPL",
-            "current_price": 195.50,
+            "ticker": "LMT",
+            "current_price": 520.50,
             "rsi_14": 55.2,
             "macd_signal": "bullish",
-            "sma_20": 190.0,
-            "sma_50": 185.0,
-            "sma_200": 175.0,
+            "sma_20": 510.0,
+            "sma_50": 490.0,
+            "sma_200": 470.0,
             "above_sma_20": true,
             "above_sma_50": true,
             "above_sma_200": true,
             "bollinger_position": "upper",
             "volume_trend": "increasing",
-            "support_level": 188.0,
-            "resistance_level": 200.0,
-            "technical_score": 72,
-            "rationale": "Bullish MACD crossover with increasing volume..."
+            "support_level": 505.0,
+            "resistance_level": 535.0,
+            "technical_score": 78,
+            "rationale": "Bullish MACD with war-driven momentum..."
         }}
     ],
-    "summary": "Overall technical analysis summary..."
+    "summary": "Overall technical analysis covering both long and short setups..."
 }}"""
 
         response = self._call_llm(prompt)
-        return self._parse_json_response(response, TechnicalAnalystOutput)
+        result = self._parse_json_response(response, TechnicalAnalystOutput)
+
+        # Backfill current_price from gathered data
+        price_map = {
+            d["ticker"]: d.get("current_price")
+            for d in data["tickers_data"]
+            if d.get("current_price") is not None
+        }
+        for analysis in result.analyses:
+            if analysis.current_price is None and analysis.ticker in price_map:
+                analysis.current_price = price_map[analysis.ticker]
+
+        return result

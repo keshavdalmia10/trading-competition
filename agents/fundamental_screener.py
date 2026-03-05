@@ -9,7 +9,7 @@ from loguru import logger
 
 from agents.base_agent import BaseAgent
 from config.settings import COMPETITION_END, COMPETITION_START
-from config.watchlist import TICKER_CLASSIFICATION
+from config.watchlist import TICKER_CLASSIFICATION, TICKER_DIRECTION
 from data.models import FundamentalData, FundamentalScreenerOutput, MacroAnalysis, StockType
 from data.sources.stock_screener import get_full_universe
 from data.sources.yahoo_finance import get_earnings_history, get_financials, get_quality_data, get_stock_info
@@ -19,7 +19,7 @@ from tools.algorithmic_scores import compute_earnings_surprise_score, compute_qu
 class FundamentalScreener(BaseAgent):
     name = "fundamental_screener"
     description = "Fundamental screener that filters stocks by quality metrics"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Gathering fundamental data for universe...")
@@ -81,6 +81,7 @@ class FundamentalScreener(BaseAgent):
                     "fcf": info.get("fcf"),
                     "earnings_surprise_pct": avg_surprise,
                     "stock_type": stock_type,
+                    "direction": TICKER_DIRECTION.get(ticker, "long"),
                     "earnings_date": financials.get("earnings_date"),
                     "in_favored_sector": info.get("sector", "") in favored_sectors,
                     "quality_score_algo": quality_algo,
@@ -93,49 +94,58 @@ class FundamentalScreener(BaseAgent):
         return {"stocks_data": stocks_data, "favored_sectors": favored_sectors}
 
     async def analyze(self, data: dict[str, Any]) -> FundamentalScreenerOutput:
-        prompt = f"""You are screening stocks for a 3-week trading competition (Feb 9 - Mar 2, 2026).
-Select the TOP 20 candidates based on fundamental quality.
+        prompt = f"""You are screening stocks for a LONG/SHORT trading competition (Mar 2 - Apr 3, 2026).
 
-ALGORITHMIC PRE-SCORES: Each stock has two deterministic pre-scores:
-- quality_score_algo: Piotroski F-Score (9 binary financial health tests, 0-100)
-- earnings_surprise_score_algo: Beat frequency + magnitude + upcoming earnings bonus (0-100)
-USE THE AVERAGE of these two as your starting point for fundamental_score.
-You may adjust +/-15 points based on qualitative factors with clear justification.
+CRITICAL CONTEXT:
+- US-Iran war: oil at $82+, Strait of Hormuz disrupted
+- 15% universal tariff imposed, domestic companies outperforming multinationals
+- Portfolio goes BOTH long AND short. Screen for BOTH directions.
 
-CRITERIA (prioritized for 3-week horizon):
-1. Earnings surprise history (companies that beat estimates tend to have momentum)
-2. Revenue growth YoY (>15% preferred)
-3. EPS growth
-4. Reasonable PE/PEG (not overvalued)
-5. Strong ROE and FCF
-6. Sector alignment with macro (favored sectors: {data['favored_sectors']})
+Select the TOP 20 candidates (mix of long and short).
+
+FOR LONG CANDIDATES: Look for strong growth, earnings beats, war/AI beneficiaries.
+FOR SHORT CANDIDATES: Look for weak balance sheets, high debt, fuel exposure,
+tariff vulnerability, unprofitable cash burners.
+
+ALGORITHMIC PRE-SCORES:
+- quality_score_algo: Piotroski F-Score (0-100)
+- earnings_surprise_score_algo: Beat frequency + magnitude (0-100)
+For LONG: USE AVERAGE as starting point for fundamental_score.
+For SHORT: INVERT the score (100 - average) as starting point.
+You may adjust +/-15 points with justification.
+
+CRITERIA:
+- LONGS: Earnings surprise history, revenue growth >15%, strong ROE/FCF
+- SHORTS: High debt/equity, negative FCF, declining revenues, margin pressure
+- Sector alignment with macro (favored sectors: {data['favored_sectors']})
 
 STOCK DATA ({len(data['stocks_data'])} candidates):
 {json.dumps(data['stocks_data'], indent=1, default=str)}
 
-For EACH of the top 20 candidates, provide a fundamental_score (0-100) and classification.
+For EACH of the top 20, provide fundamental_score (0-100) and classification.
+For short candidates, a HIGH fundamental_score means it's a GOOD short (weak company).
 
-Respond with a JSON object:
+Respond with JSON:
 {{
     "candidates": [
         {{
-            "ticker": "AAPL",
-            "name": "Apple Inc",
-            "sector": "Technology",
-            "market_cap": 3000000000000,
-            "pe_ratio": 30.5,
-            "peg_ratio": 2.1,
+            "ticker": "LMT",
+            "name": "Lockheed Martin",
+            "sector": "Industrials",
+            "market_cap": 120000000000,
+            "pe_ratio": 18.5,
+            "peg_ratio": 1.2,
             "revenue_growth_yoy": 0.08,
             "eps_growth_yoy": 0.12,
             "roe": 0.45,
-            "fcf": 100000000000,
+            "fcf": 5000000000,
             "earnings_surprise_pct": 5.2,
-            "stock_type": "evolution" or "revolution",
-            "fundamental_score": 75,
-            "rationale": "Strong earnings beat history, solid FCF..."
+            "stock_type": "evolution",
+            "fundamental_score": 80,
+            "rationale": "Strong defense contractor benefiting from war..."
         }}
     ],
-    "screening_summary": "Overall screening summary..."
+    "screening_summary": "Overall screening summary covering both long and short candidates..."
 }}
 
 Return exactly 20 candidates sorted by fundamental_score descending."""

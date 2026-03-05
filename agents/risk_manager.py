@@ -79,7 +79,7 @@ def _compute_risk_metrics(df: pd.DataFrame) -> dict[str, Any]:
 class RiskManager(BaseAgent):
     name = "risk_manager"
     description = "Risk manager assessing portfolio risk and suggesting position sizes"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Gathering risk data...")
@@ -170,7 +170,6 @@ class RiskManager(BaseAgent):
         return {"tickers_data": tickers_data, "correlations": correlations}
 
     async def analyze(self, data: dict[str, Any]) -> RiskManagerOutput:
-        # Get outputs from other agents on the bus
         technical = self.bus.get("technical_analyst")
         catalyst = self.bus.get("catalyst_hunter")
         sentiment = self.bus.get("sentiment_analyst")
@@ -181,8 +180,14 @@ class RiskManager(BaseAgent):
             "sentiment_summary": sentiment.summary if sentiment else "N/A",
         }
 
-        prompt = f"""You are a risk manager for a 3-WEEK trading competition (Feb 9 - Mar 2, 2026).
-Evaluate the risk profile of each stock and the portfolio as a whole.
+        prompt = f"""You are a risk manager for a LONG/SHORT trading competition (Mar 2 - Apr 3, 2026).
+Portfolio uses 1.5x margin (~$150K buying power on $100K cash).
+
+CRITICAL CONTEXT:
+- This is a LONG/SHORT portfolio. Evaluate risk for BOTH directions.
+- SHORT-SPECIFIC RISKS: short squeeze potential, borrow availability, gap-up risk.
+- WAR REGIME CHANGE: A ceasefire could reverse ALL war-theme trades simultaneously.
+- NET EXPOSURE: Monitor balance between long (~$80K) and short (~$70K) sides.
 
 RISK METRICS:
 {json.dumps(data['tickers_data'], indent=1, default=str)}
@@ -193,49 +198,42 @@ HIGH CORRELATIONS (>0.7):
 OTHER AGENT INSIGHTS:
 {json.dumps(context, indent=1, default=str)}
 
-VOLATILITY MODELS: Each stock includes GARCH(1,1) forecast volatility, EWMA volatility, and a
-vol_regime classification ("high"/"normal"/"low"). The VaR uses Cornish-Fisher expansion (fat-tail
-adjusted, not naive normal assumption). Use these for more accurate risk assessment.
+ALGORITHMIC PRE-SCORE: "risk_adjusted_score_algo" computed from Sharpe, drawdown, beta, VaR.
+For LONGS: Use as starting point.
+For SHORTS: High beta on a short = MORE risk (gap-up potential). Short squeeze risk lowers score.
+Adjust by +/-15 points with justification.
 
-ALGORITHMIC PRE-SCORE: Each stock has a "risk_adjusted_score_algo" computed deterministically from
-Sharpe ratio normalization, max drawdown penalty, beta sweet-spot analysis (1.0-1.5 ideal for
-competition), and VaR component. USE THIS AS YOUR STARTING POINT for risk_score.
-You may adjust by +/-15 points with clear justification.
+STOP-LOSS FRAMEWORK:
+- War Longs: -15%, War Shorts: -25%, Flexible Longs: -12%, Flexible Shorts: -20%
 
-Scoring guide (HIGHER = BETTER risk-adjusted profile):
-- 80-100: Low volatility, strong Sharpe, small max drawdown, moderate beta
-- 60-79: Moderate risk with acceptable risk/reward
-- 40-59: Elevated risk — high volatility or beta
-- 20-39: High risk — large drawdowns, extreme volatility
-- 0-19: Very high risk — dangerous for a competition
-
-IMPORTANT: For a competition, we want stocks with ENOUGH volatility to generate returns,
-but not so much that drawdowns could destroy performance. Sweet spot is moderate-high volatility
-with positive momentum.
-
-Also suggest position sizes (weight as decimal 0-1) and note diversification concerns.
+Scoring guide (HIGHER = BETTER risk-adjusted):
+- 80-100: Well-suited for position direction, manageable risk
+- 60-79: Acceptable risk with clear trade-offs
+- 40-59: Elevated risk requiring smaller position
+- 20-39: High risk
+- 0-19: Dangerous
 
 Respond with JSON:
 {{
     "analyses": [
         {{
-            "ticker": "AAPL",
-            "beta": 1.1,
-            "volatility_annualized": 0.25,
-            "max_drawdown_90d": -0.08,
-            "value_at_risk_95": -0.02,
-            "sharpe_ratio": 1.5,
-            "risk_score": 70,
-            "suggested_weight": 0.12,
-            "rationale": "Moderate risk profile suitable for competition..."
+            "ticker": "LMT",
+            "beta": 0.8,
+            "volatility_annualized": 0.22,
+            "max_drawdown_90d": -0.06,
+            "value_at_risk_95": -0.018,
+            "sharpe_ratio": 1.8,
+            "risk_score": 78,
+            "suggested_weight": 0.08,
+            "rationale": "Low beta defense stock with strong risk/reward for long..."
         }}
     ],
     "high_correlations": [
-        {{"ticker_a": "AAPL", "ticker_b": "MSFT", "correlation": 0.85}}
+        {{"ticker_a": "LMT", "ticker_b": "NOC", "correlation": 0.82}}
     ],
-    "portfolio_beta": 1.15,
-    "diversification_notes": "Portfolio has good sector diversification...",
-    "summary": "Overall risk assessment..."
+    "portfolio_beta": 0.2,
+    "diversification_notes": "Net portfolio beta near zero due to long/short balance...",
+    "summary": "Overall risk managed through long/short structure..."
 }}"""
 
         response = self._call_llm(prompt)

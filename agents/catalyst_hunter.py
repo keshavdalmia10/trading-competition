@@ -18,7 +18,7 @@ from data.sources.yahoo_finance import get_financials
 class CatalystHunter(BaseAgent):
     name = "catalyst_hunter"
     description = "Catalyst hunter finding upcoming events that drive stock moves"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Hunting for catalysts...")
@@ -78,48 +78,59 @@ class CatalystHunter(BaseAgent):
         }
 
     async def analyze(self, data: dict[str, Any]) -> CatalystHunterOutput:
-        prompt = f"""You are a catalyst hunter for a 3-WEEK stock trading competition
+        prompt = f"""You are a catalyst hunter for a LONG/SHORT stock trading competition
 ({data['competition_start']} to {data['competition_end']}).
 
-Your job is to identify UPCOMING CATALYSTS that could drive significant stock price moves
-within this exact 3-week window. The most important catalysts are:
+CRITICAL CONTEXT:
+- US-Iran war is the DOMINANT catalyst. All war-related news is high impact.
+- FOMC meeting March 17-18 is a major macro catalyst.
+- US-China trade chiefs meeting mid-March could move tech/semis.
+- 15% universal tariff is pressuring multinationals.
 
-1. EARNINGS REPORTS during the window (highest impact — stocks move 5-15% on earnings)
-2. Product launches, FDA decisions, regulatory rulings
-3. Conference presentations, investor days
-4. Analyst days, guidance updates
-5. Industry events, competitor actions
-6. Macro events (Fed meetings, economic data releases)
+Your job is to identify catalysts for BOTH long and short positions:
+
+FOR LONGS: Positive catalysts (earnings beats, war escalation benefiting defense/energy,
+cybersecurity demand, AI infrastructure spending).
+
+FOR SHORTS: Negative catalysts (fuel cost spikes crushing airlines, tariff damage,
+consumer spending decline, crypto regulatory uncertainty, ceasefire risk for defense).
+
+CATALYST CATEGORIES (ranked by importance):
+1. GEOPOLITICAL: War escalation/de-escalation, Strait of Hormuz, oil supply
+2. EARNINGS: Earnings reports during the window (5-15% moves typical)
+3. MACRO POLICY: FOMC decision, tariff developments, US-China trade meeting
+4. SECTOR-SPECIFIC: FDA decisions, product launches, regulatory rulings
+5. SENTIMENT: Analyst upgrades/downgrades, institutional positioning
 
 DATA FOR EACH STOCK:
 {json.dumps(data['tickers_data'], indent=1, default=str)}
 
-For each stock, assign a catalyst_score (0-100):
-- 80-100: Earnings date IN the window + positive recent news momentum
-- 60-79: Major catalyst expected in window (product launch, FDA, etc.)
-- 40-59: Moderate catalysts (conferences, analyst coverage)
+Scoring:
+- 80-100: Multiple strong catalysts in window (earnings + geopolitical alignment)
+- 60-79: One major catalyst or strong geopolitical tailwind/headwind
+- 40-59: Moderate catalysts (conferences, sector trends)
 - 20-39: Minor catalysts only
-- 0-19: No meaningful catalysts in the window
+- 0-19: No meaningful catalysts
 
 Respond with JSON:
 {{
     "analyses": [
         {{
-            "ticker": "AAPL",
+            "ticker": "LMT",
             "catalysts": [
                 {{
-                    "event": "Q1 2026 Earnings Report",
-                    "date": "2026-02-15",
+                    "event": "US-Iran war escalation",
+                    "date": "ongoing",
                     "impact": "high",
                     "direction": "bullish",
-                    "description": "Expected to beat estimates by 5%..."
+                    "description": "Direct beneficiary of increased defense spending..."
                 }}
             ],
-            "catalyst_score": 85,
-            "rationale": "Earnings during the window with strong beat expectations..."
+            "catalyst_score": 90,
+            "rationale": "Multiple high-impact catalysts aligned with war theme..."
         }}
     ],
-    "summary": "Overall catalyst landscape summary..."
+    "summary": "Overall catalyst landscape dominated by geopolitical events..."
 }}"""
 
         response = self._call_llm(prompt)

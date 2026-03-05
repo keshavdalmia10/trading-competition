@@ -30,7 +30,7 @@ def _compute_vader_sentiment(texts: list[str]) -> float:
 class SentimentAnalyst(BaseAgent):
     name = "sentiment_analyst"
     description = "Sentiment analyst evaluating market mood and institutional positioning"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Gathering sentiment data...")
@@ -95,49 +95,47 @@ class SentimentAnalyst(BaseAgent):
         return {"tickers_data": tickers_data}
 
     async def analyze(self, data: dict[str, Any]) -> SentimentAnalystOutput:
-        prompt = f"""You are a sentiment analyst for a 3-WEEK trading competition (Feb 9 - Mar 2, 2026).
-Evaluate the overall market sentiment for each stock.
+        prompt = f"""You are a sentiment analyst for a LONG/SHORT competition (Mar 2 - Apr 3, 2026).
+
+CRITICAL CONTEXT:
+- US-Iran war dominates news. War-related sentiment is the primary driver.
+- For LONG candidates (defense, energy, cyber): positive war news = HIGH sentiment score.
+- For SHORT candidates (airlines, consumer): negative war/economic news = HIGH sentiment score
+  (because bearish sentiment CONFIRMS the short thesis).
 
 SENTIMENT DATA:
 {json.dumps(data['tickers_data'], indent=1, default=str)}
 
-ANCHORING: Each stock has a "vader_sentiment" score (-1 to +1). Convert it to a 0-100 scale
-as your starting point: sentiment_starting_point = (vader_sentiment + 1) / 2 * 100.
-Then adjust based on analyst consensus, upgrades/downgrades, and headline quality.
-You may deviate +/-15 points from this anchor with clear justification.
+ANCHORING:
+- For LONG candidates: Convert vader_sentiment to 0-100 scale as starting point.
+- For SHORT candidates: INVERT the vader. Negative sentiment = GOOD for a short = high score.
+  So: sentiment_starting_point = (1 - vader_sentiment) / 2 * 100.
 
-Scoring factors:
-- VADER sentiment (-1 to +1): positive = bullish news flow
-- Analyst consensus: "strong buy" or "buy" = strong positive
-- Recent upgrades vs downgrades
-- Quality of headlines (are they about growth, innovation, or problems?)
-- Analyst target price vs current price (upside potential)
+Adjust +/-15 points based on analyst consensus, upgrades/downgrades, headline quality.
 
 Scoring guide:
-- 80-100: Very bullish sentiment — positive news, analyst upgrades, strong buy consensus
-- 60-79: Moderately bullish — mostly positive news, buy consensus
-- 40-59: Neutral/mixed sentiment
-- 20-39: Moderately bearish — negative news, downgrades
-- 0-19: Very bearish sentiment
-
-Also provide overall_sentiment as -1 to +1 float.
+- 80-100: Strong sentiment alignment with position direction
+- 60-79: Moderately aligned sentiment
+- 40-59: Neutral/mixed
+- 20-39: Sentiment working against position thesis
+- 0-19: Strong sentiment opposition
 
 Respond with JSON:
 {{
     "analyses": [
         {{
-            "ticker": "AAPL",
-            "overall_sentiment": 0.65,
-            "analyst_consensus": "buy",
-            "analyst_target_price": 210.0,
-            "recent_upgrades": 2,
+            "ticker": "LMT",
+            "overall_sentiment": 0.75,
+            "analyst_consensus": "strong buy",
+            "analyst_target_price": 550.0,
+            "recent_upgrades": 3,
             "recent_downgrades": 0,
-            "key_headlines": ["headline1", "headline2"],
-            "sentiment_score": 75,
-            "rationale": "Strong positive sentiment driven by..."
+            "key_headlines": ["Lockheed missile systems deployed in Iran campaign"],
+            "sentiment_score": 88,
+            "rationale": "Very bullish war-driven sentiment..."
         }}
     ],
-    "summary": "Overall sentiment landscape..."
+    "summary": "Sentiment bifurcated: defense/energy bullish, airlines/consumer bearish..."
 }}"""
 
         response = self._call_llm(prompt)
