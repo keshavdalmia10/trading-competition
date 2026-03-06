@@ -1,4 +1,4 @@
-"""Agent 7: Portfolio Manager (Orchestrator) — synthesizes all analysis into final picks."""
+"""Agent 7: Portfolio Manager — synthesizes all analysis into final long/short picks."""
 
 from __future__ import annotations
 
@@ -14,15 +14,19 @@ from config.settings import (
     MAX_PER_SECTOR,
     MAX_PORTFOLIO_STOCKS,
     MAX_SINGLE_WEIGHT,
-    MIN_EVOLUTION,
-    MIN_REVOLUTION,
     SCORING_WEIGHTS,
+    SLEEVE_TARGETS,
+    STOP_LOSS_DEFAULTS,
+    TOTAL_BUYING_POWER,
 )
+from config.watchlist import TICKER_DIRECTION, TICKER_SLEEVE
 from data.models import (
     CatalystHunterOutput,
     FundamentalScreenerOutput,
     MacroAnalysis,
     PortfolioManagerOutput,
+    PositionDirection,
+    PortfolioSleeve,
     RiskManagerOutput,
     SentimentAnalystOutput,
     TechnicalAnalystOutput,
@@ -32,7 +36,7 @@ from data.models import (
 class PortfolioManager(BaseAgent):
     name = "portfolio_manager"
     description = "Portfolio manager synthesizing all analysis into final stock picks"
-    provider = "deepseek"
+    provider = "claude"
 
     async def gather_data(self) -> dict[str, Any]:
         logger.info(f"[{self.name}] Gathering all agent outputs...")
@@ -44,7 +48,6 @@ class PortfolioManager(BaseAgent):
         sentiment: SentimentAnalystOutput | None = self.bus.get("sentiment_analyst")
         risk: RiskManagerOutput | None = self.bus.get("risk_manager")
 
-        # Build consolidated view per ticker
         consolidated = {}
         if fundamental:
             for c in fundamental.candidates:
@@ -53,6 +56,8 @@ class PortfolioManager(BaseAgent):
                     "name": c.name,
                     "sector": c.sector,
                     "stock_type": c.stock_type.value,
+                    "direction": TICKER_DIRECTION.get(c.ticker, "long"),
+                    "sleeve": TICKER_SLEEVE.get(c.ticker, "flexible"),
                     "fundamental_score": c.fundamental_score,
                     "fundamental_rationale": c.rationale,
                     "quality_score_algo": c.quality_score_algo,
@@ -98,6 +103,7 @@ class PortfolioManager(BaseAgent):
             "macro_summary": macro.summary if macro else "N/A",
             "macro_regime": macro.regime.value if macro else "neutral",
             "favored_sectors": macro.favored_sectors if macro else [],
+            "avoided_sectors": macro.avoided_sectors if macro else [],
             "risk_correlations": [
                 cp.model_dump() for cp in risk.high_correlations
             ] if risk else [],
@@ -105,19 +111,26 @@ class PortfolioManager(BaseAgent):
         }
 
     async def analyze(self, data: dict[str, Any]) -> PortfolioManagerOutput:
-        prompt = f"""You are the Portfolio Manager for a 3-WEEK college stock trading competition
-({COMPETITION_START} to {COMPETITION_END}).
+        prompt = f"""You are the Portfolio Manager for a LONG/SHORT trading competition
+({COMPETITION_START} to {COMPETITION_END}). Strategy: "War Pairs" with 1.5x margin.
 
-Your job is to SELECT EXACTLY {MAX_PORTFOLIO_STOCKS} STOCKS from the candidates below,
-assign weights, and provide investment theses.
+TOTAL BUYING POWER: ${TOTAL_BUYING_POWER:,.0f} (~$80K long, ~$70K short)
 
-CONSTRAINTS (MUST be followed):
-1. Exactly {MAX_PORTFOLIO_STOCKS} stocks
-2. Maximum {MAX_PER_SECTOR} stocks per sector
-3. At least {MIN_EVOLUTION} "evolution" stocks (established companies innovating)
-4. At least {MIN_REVOLUTION} "revolution" stocks (disruptive companies)
-5. No single stock > {MAX_SINGLE_WEIGHT*100}% weight
-6. Total weights must sum to 100%
+Your job is to SELECT ~{MAX_PORTFOLIO_STOCKS} STOCKS (8 long + 8 short), assign weights,
+directions, sleeves, and provide investment theses.
+
+SLEEVE ALLOCATION TARGETS:
+{json.dumps(SLEEVE_TARGETS, indent=2)}
+
+STOP-LOSS DEFAULTS:
+{json.dumps(STOP_LOSS_DEFAULTS, indent=2)}
+
+CONSTRAINTS:
+1. ~8 long positions, ~8 short positions (~16 total)
+2. Maximum {MAX_PER_SECTOR} stocks per sector (across both sides)
+3. No single stock > {MAX_SINGLE_WEIGHT*100}% weight
+4. Total long weights + total short weights = 100%
+5. Long exposure target: ~53%, Short exposure target: ~47%
 
 SCORING WEIGHTS:
 {json.dumps(SCORING_WEIGHTS, indent=2)}
@@ -125,7 +138,8 @@ SCORING WEIGHTS:
 MACRO CONTEXT:
 - Regime: {data['macro_regime']}
 - Summary: {data['macro_summary']}
-- Favored sectors: {data['favored_sectors']}
+- Favored sectors (LONG): {data['favored_sectors']}
+- Sectors to SHORT: {data.get('avoided_sectors', [])}
 
 HIGH CORRELATIONS TO WATCH:
 {json.dumps(data['risk_correlations'], indent=1, default=str)}
@@ -135,47 +149,46 @@ DIVERSIFICATION NOTES: {data['risk_diversification']}
 CONSOLIDATED CANDIDATE DATA ({len(data['consolidated'])} stocks):
 {json.dumps(data['consolidated'], indent=1, default=str)}
 
-SELECT YOUR TOP {MAX_PORTFOLIO_STOCKS}. For each, compute a composite score using the weights above.
+Each candidate has a "direction" (long/short) and "sleeve" (war_long/war_short/flexible).
+Respect these assignments.
 
-ALGORITHMIC PRE-SCORES: Each candidate includes deterministic algo scores
-(momentum_score_algo, quality_score_algo, earnings_surprise_score_algo, risk_adjusted_score_algo).
-These are formula-based anchors. If any LLM-assigned score deviates by >15 points from its
-algo counterpart, flag it in the stock's rationale and explain why.
-
-Consider:
-- Highest composite scores should generally be selected
-- But also ensure sector diversification and evo/revo balance
-- Avoid highly correlated pairs (pick the better one)
-- Favor stocks with catalysts IN the competition window
-- In a competition, moderate-high risk is acceptable for potential returns
+CONTINGENCY PLANS (include in portfolio_rationale):
+- Ceasefire: Close war shorts immediately, trim war longs 50%
+- Escalation (oil >$100): Add energy longs, add airline shorts
+- FOMC surprise: Adjust rate-sensitive positions
 
 Respond with JSON:
 {{
     "stocks": [
         {{
-            "ticker": "AAPL",
-            "name": "Apple Inc",
-            "sector": "Technology",
+            "ticker": "LMT",
+            "name": "Lockheed Martin",
+            "sector": "Industrials",
             "stock_type": "evolution",
-            "weight_pct": 12.0,
+            "direction": "long",
+            "sleeve": "war_long",
+            "stop_loss_pct": 15.0,
+            "weight_pct": 8.0,
             "composite_score": 82.5,
             "fundamental_score": 75.0,
             "technical_score": 80.0,
             "catalyst_score": 90.0,
-            "sentiment_score": 70.0,
-            "risk_score": 65.0,
-            "entry_strategy": "Buy at market open on Monday",
-            "exit_strategy": "Hold through competition unless -10% stop loss hit",
-            "thesis": "Strong earnings catalyst with bullish technical setup..."
+            "sentiment_score": 85.0,
+            "risk_score": 70.0,
+            "entry_strategy": "Buy at market open",
+            "exit_strategy": "Hold unless -15% stop hit or ceasefire announced",
+            "thesis": "Top defense contractor directly benefiting from US-Iran war..."
         }}
     ],
-    "portfolio_rationale": "Overall portfolio construction rationale...",
-    "evolution_count": 5,
-    "revolution_count": 5,
-    "sector_breakdown": {{"Technology": 3, "Healthcare": 2, ...}},
-    "expected_portfolio_beta": 1.15,
-    "key_risks": ["risk1", "risk2"],
-    "key_catalysts": ["catalyst1", "catalyst2"]
+    "portfolio_rationale": "War Pairs strategy rationale with contingency plans...",
+    "long_count": 8,
+    "short_count": 8,
+    "long_exposure_pct": 53.0,
+    "short_exposure_pct": 47.0,
+    "sector_breakdown": {{"Industrials": 4, "Energy": 3, "Technology": 4}},
+    "expected_portfolio_beta": 0.2,
+    "key_risks": ["ceasefire reversal", "oil collapse", "margin call in crash"],
+    "key_catalysts": ["oil >$100", "FOMC Mar 17-18", "US-China mid-March meeting"]
 }}"""
 
         response = self._call_llm(prompt)
