@@ -87,17 +87,21 @@ def _build_portfolio_summary(wb: Workbook, portfolio: PortfolioManagerOutput) ->
     ws.cell(row=1, column=1, value="Trading Competition Portfolio").font = Font(bold=True, size=14)
     ws.cell(row=2, column=1, value=f"Period: {COMPETITION_START} to {COMPETITION_END}")
     ws.cell(row=3, column=1, value=f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-    ws.cell(row=4, column=1, value=f"Evolution: {portfolio.evolution_count} | Revolution: {portfolio.revolution_count}")
+    ws.cell(row=4, column=1, value=f"Long: {portfolio.long_count} | Short: {portfolio.short_count} | Long Exposure: {portfolio.long_exposure_pct}% | Short Exposure: {portfolio.short_exposure_pct}%")
 
     headers = [
-        "Ticker", "Name", "Type", "Sector", "Composite Score",
-        "Weight %", "Entry Strategy", "Exit Strategy", "Thesis",
+        "Ticker", "Name", "Direction", "Sleeve", "Sector", "Composite Score",
+        "Weight %", "Stop-Loss %", "Entry Strategy", "Exit Strategy", "Thesis",
     ]
     rows = []
     for s in sorted(portfolio.stocks, key=lambda x: x.composite_score, reverse=True):
         rows.append([
-            s.ticker, s.name, s.stock_type.value.title(), s.sector,
+            s.ticker, s.name,
+            s.direction.value.upper() if hasattr(s, 'direction') else "LONG",
+            s.sleeve.value.replace("_", " ").title() if hasattr(s, 'sleeve') else "N/A",
+            s.sector,
             round(s.composite_score, 1), round(s.weight_pct, 1),
+            round(s.stop_loss_pct, 1) if hasattr(s, 'stop_loss_pct') else "N/A",
             s.entry_strategy, s.exit_strategy, s.thesis,
         ])
 
@@ -120,7 +124,7 @@ def _build_portfolio_summary(wb: Workbook, portfolio: PortfolioManagerOutput) ->
 
     _auto_width(ws)
     # Make thesis column wider
-    ws.column_dimensions["I"].width = 60
+    ws.column_dimensions["K"].width = 60
 
 
 def _build_macro_overview(wb: Workbook, macro: MacroAnalysis) -> None:
@@ -392,7 +396,7 @@ def _build_scoring_matrix(
     rows_data.sort(key=lambda r: r.composite_score, reverse=True)
 
     headers = [
-        "Ticker", "Name", "Sector", "Type",
+        "Ticker", "Name", "Sector", "Type", "Direction",
         "Fund", "Fund Algo (Qual)", "Fund Algo (Earn)",
         "Tech", "Tech Algo (Mom)",
         "Catalyst", "Sentiment",
@@ -403,6 +407,7 @@ def _build_scoring_matrix(
     for r in rows_data:
         rows.append([
             r.ticker, r.name, r.sector, r.stock_type.value.title(),
+            r.direction.value.upper() if hasattr(r, 'direction') else "LONG",
             round(r.fundamental_score, 1),
             round(r.quality_score_algo, 1) if r.quality_score_algo is not None else "N/A",
             round(r.earnings_surprise_score_algo, 1) if r.earnings_surprise_score_algo is not None else "N/A",
@@ -419,8 +424,8 @@ def _build_scoring_matrix(
 
     # Color the selected rows
     for row_idx in range(5, 5 + len(rows)):
-        if ws.cell(row=row_idx, column=15).value == "YES":
-            for col in range(1, 16):
+        if ws.cell(row=row_idx, column=16).value == "YES":
+            for col in range(1, 17):
                 ws.cell(row=row_idx, column=col).fill = GOOD_FILL
 
     _auto_width(ws)
@@ -586,7 +591,7 @@ def _build_agent_summaries(
         stock_lines.append(f"- {s.ticker} ({s.name}): {s.weight_pct}% weight, Score={s.composite_score}/100 — {s.thesis}")
     details = [
         ("Stocks Selected", str(len(portfolio.stocks))),
-        ("Evolution / Revolution", f"{portfolio.evolution_count} / {portfolio.revolution_count}"),
+        ("Long / Short", f"{portfolio.long_count} / {portfolio.short_count} (Long Exposure: {portfolio.long_exposure_pct}%, Short: {portfolio.short_exposure_pct}%)"),
         ("Sector Breakdown", ", ".join(f"{k}: {v}" for k, v in portfolio.sector_breakdown.items())),
         ("Key Risks", "\n".join(f"- {r}" for r in portfolio.key_risks)),
         ("Key Catalysts", "\n".join(f"- {c}" for c in portfolio.key_catalysts)),
