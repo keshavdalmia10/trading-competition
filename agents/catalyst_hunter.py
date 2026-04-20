@@ -12,6 +12,7 @@ from config.settings import COMPETITION_END, COMPETITION_START
 from data.models import CatalystHunterOutput, FundamentalScreenerOutput
 from data.sources.finnhub_client import get_company_news, get_earnings_calendar
 from data.sources.news_api import get_headlines
+from data.sources.polymarket import PolymarketClient
 from data.sources.yahoo_finance import get_financials
 
 
@@ -71,10 +72,19 @@ class CatalystHunter(BaseAgent):
                 logger.warning(f"[{self.name}] Skipping {ticker}: {e}")
                 continue
 
+        # Polymarket event probabilities
+        try:
+            poly_client = PolymarketClient()
+            polymarket_summary = poly_client.get_summary_for_agents()
+        except Exception as e:
+            logger.warning(f"[{self.name}] Polymarket fetch failed: {e}")
+            polymarket_summary = {}
+
         return {
             "tickers_data": tickers_data,
             "competition_start": str(COMPETITION_START),
             "competition_end": str(COMPETITION_END),
+            "polymarket": polymarket_summary,
         }
 
     async def analyze(self, data: dict[str, Any]) -> CatalystHunterOutput:
@@ -101,6 +111,15 @@ CATALYST CATEGORIES (ranked by importance):
 3. MACRO POLICY: FOMC decision, tariff developments, US-China trade meeting
 4. SECTOR-SPECIFIC: FDA decisions, product launches, regulatory rulings
 5. SENTIMENT: Analyst upgrades/downgrades, institutional positioning
+
+POLYMARKET EVENT PROBABILITIES (crowd-sourced prediction markets):
+{json.dumps(data.get('polymarket', {}).get('categories', {}), indent=1, default=str)}
+
+Use these probabilities to calibrate catalyst scores:
+- If ceasefire probability > 20%, DOWNGRADE catalyst scores for war longs (LMT, NOC, RTX etc.)
+  and UPGRADE scores for war shorts (they benefit from ceasefire).
+- If war escalation probability is HIGH, UPGRADE defense/energy catalysts.
+- FOMC and tariff probabilities help calibrate macro catalyst timing.
 
 DATA FOR EACH STOCK:
 {json.dumps(data['tickers_data'], indent=1, default=str)}

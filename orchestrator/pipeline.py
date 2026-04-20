@@ -54,14 +54,22 @@ async def run_pipeline(skip_screener: bool = False) -> Path:
     catalyst_agent = CatalystHunter(bus)
     sentiment_agent = SentimentAnalyst(bus)
 
-    await asyncio.gather(
-        technical_agent.run(),
-        catalyst_agent.run(),
-        sentiment_agent.run(),
+    phase1_agents = [
+        ("Technical Analyst", technical_agent),
+        ("Catalyst Hunter", catalyst_agent),
+        ("Sentiment Analyst", sentiment_agent),
+    ]
+
+    results = await asyncio.gather(
+        *(agent.run() for _, agent in phase1_agents),
+        return_exceptions=True,
     )
-    logger.info("✓ Technical Analyst complete")
-    logger.info("✓ Catalyst Hunter complete")
-    logger.info("✓ Sentiment Analyst complete")
+
+    for (label, _), result in zip(phase1_agents, results):
+        if isinstance(result, Exception):
+            logger.error(f"✗ {label} failed: {result}")
+        else:
+            logger.info(f"✓ {label} complete")
 
     # ── Phase 2: Sequential ──────────────────────────────────────────────
     logger.info("\n--- PHASE 2: Risk Management & Portfolio Construction ---")

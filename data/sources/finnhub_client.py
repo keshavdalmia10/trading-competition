@@ -119,7 +119,7 @@ def get_earnings_calendar(from_date: str, to_date: str) -> list[dict[str, Any]]:
         return []
 
     try:
-        cal = client.earnings_calendar(_from=from_date, to=to_date, international=False)
+        cal = client.earnings_calendar(_from=from_date, to=to_date, symbol="", international=False)
         earnings = cal.get("earningsCalendar", [])
         result = [
             {

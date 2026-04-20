@@ -20,6 +20,7 @@ from config.settings import (
     TOTAL_BUYING_POWER,
 )
 from config.watchlist import TICKER_DIRECTION, TICKER_SLEEVE
+from data.sources.polymarket import PolymarketClient
 from data.models import (
     CatalystHunterOutput,
     FundamentalScreenerOutput,
@@ -98,6 +99,14 @@ class PortfolioManager(BaseAgent):
                     consolidated[r.ticker]["volatility"] = r.volatility_annualized
                     consolidated[r.ticker]["risk_adjusted_score_algo"] = r.risk_adjusted_score_algo
 
+        # Polymarket event probabilities for portfolio construction context
+        try:
+            poly_client = PolymarketClient()
+            polymarket_summary = poly_client.get_summary_for_agents()
+        except Exception as e:
+            logger.warning(f"[{self.name}] Polymarket fetch failed: {e}")
+            polymarket_summary = {}
+
         return {
             "consolidated": list(consolidated.values()),
             "macro_summary": macro.summary if macro else "N/A",
@@ -108,6 +117,7 @@ class PortfolioManager(BaseAgent):
                 cp.model_dump() for cp in risk.high_correlations
             ] if risk else [],
             "risk_diversification": risk.diversification_notes if risk else "N/A",
+            "polymarket": polymarket_summary,
         }
 
     async def analyze(self, data: dict[str, Any]) -> PortfolioManagerOutput:
@@ -125,12 +135,14 @@ SLEEVE ALLOCATION TARGETS:
 STOP-LOSS DEFAULTS:
 {json.dumps(STOP_LOSS_DEFAULTS, indent=2)}
 
-CONSTRAINTS:
-1. ~8 long positions, ~8 short positions (~16 total)
+CONSTRAINTS (MANDATORY — violating any of these is a FAILURE):
+1. You MUST select EXACTLY 8 long positions AND EXACTLY 7-8 short positions (15-16 total)
 2. Maximum {MAX_PER_SECTOR} stocks per sector (across both sides)
 3. No single stock > {MAX_SINGLE_WEIGHT*100}% weight
-4. Total long weights + total short weights = 100%
+4. Total long weights + total short weights = 100% (MUST sum to 100)
 5. Long exposure target: ~53%, Short exposure target: ~47%
+6. You MUST include shorts from the war_short sleeve (AAL, DAL, UAL, CCL, ABNB, DIS, NKE)
+7. You MUST include shorts from the flexible sleeve (RIVN, LCID, SNAP, COIN, HOOD)
 
 SCORING WEIGHTS:
 {json.dumps(SCORING_WEIGHTS, indent=2)}
@@ -145,6 +157,16 @@ HIGH CORRELATIONS TO WATCH:
 {json.dumps(data['risk_correlations'], indent=1, default=str)}
 
 DIVERSIFICATION NOTES: {data['risk_diversification']}
+
+POLYMARKET LIVE EVENT PROBABILITIES:
+{json.dumps(data.get('polymarket', {}).get('categories', {}), indent=1, default=str)}
+
+These are REAL-MONEY prediction market odds. Factor them into position sizing:
+- If ceasefire probability > 20%: REDUCE war_long weights, TIGHTEN war_short stops
+- If war escalation probability HIGH: INCREASE war sleeve allocation
+- FOMC rate-cut odds inform GS/JPM sizing
+- Tariff odds inform NKE and consumer exposure
+- Use these to refine your contingency plan triggers with SPECIFIC probability thresholds
 
 CONSOLIDATED CANDIDATE DATA ({len(data['consolidated'])} stocks):
 {json.dumps(data['consolidated'], indent=1, default=str)}
@@ -175,9 +197,9 @@ Respond with JSON:
             "catalyst_score": 90.0,
             "sentiment_score": 85.0,
             "risk_score": 70.0,
-            "entry_strategy": "Buy at market open",
-            "exit_strategy": "Hold unless -15% stop hit or ceasefire announced",
-            "thesis": "Top defense contractor directly benefiting from US-Iran war..."
+            "entry_strategy": "Buy at market open (1-2 sentences max)",
+            "exit_strategy": "Stop at -15%, trim on ceasefire (1-2 sentences max)",
+            "thesis": "1-2 sentence thesis ONLY. Be concise."
         }}
     ],
     "portfolio_rationale": "War Pairs strategy rationale with contingency plans...",

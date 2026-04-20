@@ -23,7 +23,7 @@ class BaseAgent(ABC):
 
     name: str = "base_agent"
     description: str = "Base agent"
-    provider: str = "deepseek"  # "grok" or "deepseek"
+    provider: str = "claude"  # "grok" or "claude"
 
     def __init__(self, bus: MessageBus) -> None:
         self.bus = bus
@@ -31,19 +31,14 @@ class BaseAgent(ABC):
         self._prompt_text = self._load_prompt()
 
     def _build_client(self) -> OpenAI:
-        if self.provider == "grok":
-            return OpenAI(
-                api_key=settings.GROK_API_KEY,
-                base_url=settings.GROK_BASE_URL,
-            )
         return OpenAI(
-            api_key=settings.DEEPSEEK_API_KEY,
-            base_url=settings.DEEPSEEK_BASE_URL,
+            api_key=settings.ANTHROPIC_API_KEY,
+            base_url=settings.ANTHROPIC_BASE_URL,
         )
 
     @property
     def _model(self) -> str:
-        return settings.GROK_MODEL if self.provider == "grok" else settings.DEEPSEEK_MODEL
+        return settings.ANTHROPIC_MODEL
 
     def _load_prompt(self) -> str:
         prompt_path = Path(__file__).parent.parent / "config" / "prompts" / f"{self.name}.md"
@@ -68,17 +63,11 @@ class BaseAgent(ABC):
             model=self._model,
             messages=messages,
         )
-        if self._model == "deepseek-reasoner":
-            # reasoner: max_tokens covers reasoning + content; no temperature support
-            kwargs["max_tokens"] = 32768
-        else:
-            kwargs["max_tokens"] = settings.LLM_MAX_TOKENS
-            kwargs["temperature"] = settings.LLM_TEMPERATURE
+        kwargs["max_tokens"] = settings.LLM_MAX_TOKENS
+        kwargs["temperature"] = settings.LLM_TEMPERATURE
         response = self._client.chat.completions.create(**kwargs)
         msg = response.choices[0].message
         content = msg.content or ""
-        if hasattr(msg, "reasoning_content") and msg.reasoning_content:
-            logger.debug(f"[{self.name}] Reasoning: {len(msg.reasoning_content)} chars")
         logger.debug(f"[{self.name}] Content: {len(content)} chars")
         return content
 
@@ -118,16 +107,16 @@ class BaseAgent(ABC):
         except Exception:
             pass
 
-        # JSON parsed but validation failed — ask deepseek-chat to fix the schema
+        # JSON parsed but validation failed — ask Claude to fix the schema
         if parsed is not None:
             schema = model_class.model_json_schema()
             logger.warning(f"[{self.name}] JSON valid but schema mismatch, requesting fix...")
             fix_client = OpenAI(
-                api_key=settings.DEEPSEEK_API_KEY,
-                base_url=settings.DEEPSEEK_BASE_URL,
+                api_key=settings.ANTHROPIC_API_KEY,
+                base_url=settings.ANTHROPIC_BASE_URL,
             )
             fix_resp = fix_client.chat.completions.create(
-                model="deepseek-chat",
+                model=settings.ANTHROPIC_MODEL,
                 messages=[
                     {"role": "system", "content": "Restructure the JSON to match the required schema. Output ONLY valid JSON."},
                     {"role": "user", "content": f"SCHEMA:\n{json.dumps(schema, indent=1)}\n\nDATA:\n{json.dumps(parsed, default=str)[:12000]}"},

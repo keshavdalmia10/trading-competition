@@ -10,11 +10,12 @@ import pandas as pd
 from loguru import logger
 
 from agents.base_agent import BaseAgent
-from config.settings import RISK_WINDOW_DAYS
+from config.settings import POLYMARKET_CEASEFIRE_RISK_THRESHOLD, RISK_WINDOW_DAYS
 from data.models import (
     FundamentalScreenerOutput,
     RiskManagerOutput,
 )
+from data.sources.polymarket import PolymarketClient
 from data.sources.yahoo_finance import get_price_history
 from tools.algorithmic_scores import compute_risk_adjusted_score
 from tools.position_sizing import inverse_volatility_weights
@@ -167,7 +168,31 @@ class RiskManager(BaseAgent):
         for td in tickers_data:
             td["suggested_weight"] = suggested_weights.get(td["ticker"], 0.05)
 
-        return {"tickers_data": tickers_data, "correlations": correlations}
+        # Polymarket event risk for regime-change detection
+        try:
+            poly_client = PolymarketClient()
+            polymarket_summary = poly_client.get_summary_for_agents()
+        except Exception as e:
+            logger.warning(f"[{self.name}] Polymarket fetch failed: {e}")
+            polymarket_summary = {}
+
+        # Flag if ceasefire risk is elevated
+        ceasefire_prob = polymarket_summary.get("highest_risk_probability", 0)
+        ceasefire_alert = ceasefire_prob >= POLYMARKET_CEASEFIRE_RISK_THRESHOLD
+        if ceasefire_alert:
+            logger.warning(
+                f"[{self.name}] ⚠ CEASEFIRE PROBABILITY {ceasefire_prob:.0%} "
+                f"exceeds threshold {POLYMARKET_CEASEFIRE_RISK_THRESHOLD:.0%} — "
+                f"war sleeve positions at elevated risk!"
+            )
+
+        return {
+            "tickers_data": tickers_data,
+            "correlations": correlations,
+            "polymarket": polymarket_summary,
+            "ceasefire_alert": ceasefire_alert,
+            "ceasefire_probability": ceasefire_prob,
+        }
 
     async def analyze(self, data: dict[str, Any]) -> RiskManagerOutput:
         technical = self.bus.get("technical_analyst")
@@ -197,6 +222,17 @@ HIGH CORRELATIONS (>0.7):
 
 OTHER AGENT INSIGHTS:
 {json.dumps(context, indent=1, default=str)}
+
+POLYMARKET EVENT RISK:
+{json.dumps(data.get('polymarket', {}).get('categories', {}), indent=1, default=str)}
+
+CEASEFIRE ALERT: {'⚠ YES — probability ' + str(round(data.get('ceasefire_probability', 0) * 100)) + '%' if data.get('ceasefire_alert') else 'No — below threshold'}
+
+CRITICAL: If ceasefire probability > 20%, you MUST:
+1. Penalize risk scores for ALL war_long positions by 10-20 points (regime reversal risk)
+2. Note in rationale that war shorts face squeeze risk on ceasefire
+3. Recommend smaller position sizes for war sleeve stocks
+4. Flag this prominently in your summary and diversification_notes
 
 ALGORITHMIC PRE-SCORE: "risk_adjusted_score_algo" computed from Sharpe, drawdown, beta, VaR.
 For LONGS: Use as starting point.

@@ -61,7 +61,7 @@ pip install -r requirements.txt
 3. Fill in the required API keys in the `.env` file in the project root:
 ```
 GROK_API_KEY=your_grok_api_key_here
-DEEPSEEK_API_KEY=your_deepseek_api_key_here
+ANTHROPIC_API_KEY=your_anthropic_api_key_here
 FRED_API_KEY=your_fred_api_key_here
 NEWSAPI_KEY=your_newsapi_key_here
 FINNHUB_KEY=your_finnhub_key_here
@@ -72,7 +72,7 @@ FINNHUB_KEY=your_finnhub_key_here
 The system uses two LLM providers for optimal cost-performance balance:
 
 - **Grok (xAI)**: Used for the Portfolio Manager agent due to superior reasoning capabilities for complex decision-making and portfolio construction
-- **DeepSeek**: Used for all analysis agents (Macro, Fundamental, Technical, Catalyst, Sentiment, Risk) due to cost-effectiveness and fast performance for structured analysis tasks
+- **Claude (Anthropic)**: Used for all analysis agents (Macro, Fundamental, Technical, Catalyst, Sentiment, Risk) due to strong reasoning capabilities and reliable structured output
 
 ## Usage
 

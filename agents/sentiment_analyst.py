@@ -11,6 +11,7 @@ from agents.base_agent import BaseAgent
 from data.models import FundamentalScreenerOutput, SentimentAnalystOutput
 from data.sources.finnhub_client import get_analyst_recommendations, get_price_target
 from data.sources.news_api import get_headlines
+from data.sources.polymarket import PolymarketClient
 
 
 def _compute_vader_sentiment(texts: list[str]) -> float:
@@ -92,7 +93,15 @@ class SentimentAnalyst(BaseAgent):
                 logger.warning(f"[{self.name}] Skipping {ticker}: {e}")
                 continue
 
-        return {"tickers_data": tickers_data}
+        # Polymarket crowd sentiment
+        try:
+            poly_client = PolymarketClient()
+            polymarket_summary = poly_client.get_summary_for_agents()
+        except Exception as e:
+            logger.warning(f"[{self.name}] Polymarket fetch failed: {e}")
+            polymarket_summary = {}
+
+        return {"tickers_data": tickers_data, "polymarket": polymarket_summary}
 
     async def analyze(self, data: dict[str, Any]) -> SentimentAnalystOutput:
         prompt = f"""You are a sentiment analyst for a LONG/SHORT competition (Mar 2 - Apr 3, 2026).
@@ -102,6 +111,15 @@ CRITICAL CONTEXT:
 - For LONG candidates (defense, energy, cyber): positive war news = HIGH sentiment score.
 - For SHORT candidates (airlines, consumer): negative war/economic news = HIGH sentiment score
   (because bearish sentiment CONFIRMS the short thesis).
+
+POLYMARKET CROWD SENTIMENT (prediction market probabilities):
+{json.dumps(data.get('polymarket', {}).get('categories', {}), indent=1, default=str)}
+
+Polymarket represents CROWD CONSENSUS on event risk. Use it as an additional sentiment signal:
+- High ceasefire probability = bearish sentiment for defense longs, bullish for airline shorts
+- High war escalation probability = bullish sentiment for defense/energy
+- These are real-money bets, so they carry more weight than news headlines alone
+- If Polymarket odds DISAGREE with news sentiment, note the divergence in your rationale
 
 SENTIMENT DATA:
 {json.dumps(data['tickers_data'], indent=1, default=str)}
